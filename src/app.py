@@ -252,6 +252,7 @@ if st.session_state.paper_text:
     st.header("🗣️ Guided Impact Interview")
 
     missing_section = next_missing_section(st.session_state.impact_state)
+    all_answered = all(v["content"] is not None for v in st.session_state.impact_state.values())
 
     if missing_section:
         if st.session_state.current_prompt is None:
@@ -267,73 +268,77 @@ if st.session_state.paper_text:
                     last_answer
                 )
 
-        # Display conversation history
-        for question, answer in st.session_state.interview_transcript:
-            with st.chat_message("assistant"):
-                st.write(question)
-            with st.chat_message("user"):
-                st.write(answer)
+    # Display conversation history
+    for question, answer in st.session_state.interview_transcript:
+        with st.chat_message("assistant"):
+            st.write(question)
+        with st.chat_message("user"):
+            st.write(answer)
 
-        # Display current pending question
-        if st.session_state.current_prompt:
-            with st.chat_message("assistant"):
-                st.write(st.session_state.current_prompt)
+    # Display current pending question
+    if missing_section and st.session_state.current_prompt:
+        with st.chat_message("assistant"):
+            st.write(st.session_state.current_prompt)
 
-        # Chat input for user response
-        user_answer = st.chat_input("Type your answer here...")
+    # Chat input for user response (disabled when all answered)
+    user_answer = st.chat_input("Type your answer here...", disabled=all_answered)
 
-        if user_answer:
-            # Append to transcript immediately so it appears in chat
-            st.session_state.interview_transcript.append(
-                (st.session_state.current_prompt, user_answer)
-            )
+    if user_answer and missing_section:
+        # Append to transcript immediately so it appears in chat
+        st.session_state.interview_transcript.append(
+            (st.session_state.current_prompt, user_answer)
+        )
 
-            with st.spinner("Integrating response..."):
-                section_data = st.session_state.impact_state[missing_section]
-                section_data["answers"].append(user_answer)
-                section_data["attempts"] += 1
-                
-                evaluate_and_store(missing_section, st.session_state.paper_text)
+        with st.spinner("Integrating response..."):
+            section_data = st.session_state.impact_state[missing_section]
+            section_data["answers"].append(user_answer)
+            section_data["attempts"] += 1
+            
+            evaluate_and_store(missing_section, st.session_state.paper_text)
 
-            st.session_state.current_prompt = None
-            st.rerun()
-    else:
+        st.session_state.current_prompt = None
+        st.rerun()
+    
+    if all_answered:
         st.success("All impact story elements have been collected.")
 # --------------------------------
 # Step 3: Show Contribution State
 # --------------------------------
-if st.session_state.paper_text:
-    st.header("📊 Impact Story Coverage")
+# if st.session_state.paper_text:
+#     st.header("📊 Impact Story Coverage")
 
-    for k, v in st.session_state.impact_state.items():
-        with st.expander(k.replace("_", " ").title()):
-            st.write(v["content"] if v["content"] else "Not yet completed")
+#     for k, v in st.session_state.impact_state.items():
+#         with st.expander(k.replace("_", " ").title()):
+#             st.write(v["content"] if v["content"] else "Not yet completed")
 
 # --------------------------------
 # Step 4: Generate Impact Story
 # --------------------------------
-if all(st.session_state.impact_state.values()):
-    st.header("📘 Final Impact Story")
+if st.session_state.paper_text:
+    all_answered = all(v["content"] is not None for v in st.session_state.impact_state.values())
+    
+    if all_answered:
+        st.header("📘 Final Impact Story")
 
-    if st.button("Generate Impact Story"):
-        with st.spinner("Writing impact story..."):
-            prompt = (
-                "Write a complete Impact Story for a broad audience using the structure below.\n\n"
-                "Structure and word limits:\n"
-                "- Title (short, active)\n"
-                "- Introduction (~100 words)\n"
-                "- Societal Impact (~150 words)\n"
-                "- Research and Approach (~150 words)\n"
-                "- People and Collaboration (~100 words)\n"
-                "- Conclusion / Outlook (~50 words)\n\n"
-                "Keep the story concrete and human. Avoid jargon.\n"
-                "Focus on the connection between science and everyday life.\n\n"
-                "Use the following elicited content as your primary source:\n\n"
-            )
+        if st.button("Generate Impact Story"):
+            with st.spinner("Writing impact story..."):
+                prompt = (
+                    "Write a complete Impact Story for a broad audience using the structure below.\n\n"
+                    "Structure and word limits:\n"
+                    "- Title (short, active)\n"
+                    "- Introduction (~100 words)\n"
+                    "- Societal Impact (~150 words)\n"
+                    "- Research and Approach (~150 words)\n"
+                    "- People and Collaboration (~100 words)\n"
+                    "- Conclusion / Outlook (~50 words)\n\n"
+                    "Keep the story concrete and human. Avoid jargon.\n"
+                    "Focus on the connection between science and everyday life.\n\n"
+                    "Use the following elicited content as your primary source:\n\n"
+                )
 
-            for k, v in st.session_state.impact_state.items():
-                prompt += f"\n{k.replace('_', ' ').title()}:\n{v}\n"
+                for k, v in st.session_state.impact_state.items():
+                    prompt += f"\n{k.replace('_', ' ').title()}:\n{v['content']}\n"
 
-            impact_story = llm.invoke(prompt).content
+                impact_story = llm.invoke(prompt).content
 
-        st.markdown(impact_story)
+            st.markdown(impact_story)
