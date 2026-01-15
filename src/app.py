@@ -22,26 +22,38 @@ st.caption(
 # --------------------------------
 # Sidebar: API config
 # --------------------------------
-st.sidebar.header("🔑 LLM Configuration")
+# Initialize API key in session state if not present
+if "api_key" not in st.session_state:
+    st.session_state.api_key = ""
 
-api_key = st.sidebar.text_input(
-    "OpenAI API Key",
-    type="password"
-)
+# Create expander that collapses when API key is entered
+with st.sidebar.expander("🔑 LLM Configuration", expanded=not bool(st.session_state.api_key)):
+    api_key = st.text_input(
+        "OpenAI API Key",
+        type="password",
+        value=st.session_state.api_key,
+        key="api_key_input"
+    )
+    
+    base_url = st.text_input(
+        "Base URL",
+        value="https://ai-research-proxy.azurewebsites.net"
+    )
+    
+    model_name = st.text_input(
+        "Model",
+        value="gpt-4.1-mini"
+    )
+    
+    # Update session state when API key changes
+    st.session_state.api_key = api_key
 
-base_url = st.sidebar.text_input(
-    "Base URL",
-    value="https://ai-research-proxy.azurewebsites.net"
-)
-
-model_name = st.sidebar.text_input(
-    "Model",
-    value="gpt-4.1-mini"
-)
-
-if not api_key:
+if not st.session_state.api_key:
     st.warning("Please enter your API key to continue.")
     st.stop()
+
+# Use session state API key for LLM initialization
+api_key = st.session_state.api_key
 
 # --------------------------------
 # Initialize LLM
