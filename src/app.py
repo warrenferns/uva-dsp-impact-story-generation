@@ -2,6 +2,7 @@ import streamlit as st
 from langchain_openai import ChatOpenAI
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from datetime import datetime, timedelta
 
 
 # --------------------------------
@@ -56,6 +57,23 @@ if not st.session_state.api_key:
 api_key = st.session_state.api_key
 
 # --------------------------------
+# Sidebar: Session info
+# --------------------------------
+with st.sidebar.expander("📋 Session", expanded=True):
+    if st.session_state.get("paper_text"):
+        st.markdown("✓ Paper uploaded")
+        
+        # Calculate elapsed time
+        if st.session_state.get("session_start_time"):
+            elapsed = datetime.now() - st.session_state.session_start_time
+            minutes = int(elapsed.total_seconds() / 60)
+            st.markdown(f"Started {minutes} mins ago")
+        else:
+            st.markdown("Started 0 mins ago")
+    else:
+        st.markdown("Paper not uploaded")
+
+# --------------------------------
 # Initialize LLM
 # --------------------------------
 llm = ChatOpenAI(
@@ -87,6 +105,9 @@ llm = ChatOpenAI(
 
 if "paper_text" not in st.session_state:
     st.session_state.paper_text = None
+
+if "session_start_time" not in st.session_state:
+    st.session_state.session_start_time = None
 
 if "impact_state" not in st.session_state:
     st.session_state.impact_state = {
@@ -254,8 +275,12 @@ if uploaded_file and st.session_state.paper_text is None:
 
         paper_text = "\n\n".join(d.page_content for d in docs)
         st.session_state.paper_text = summarize_paper_sections(paper_text)
-
-    st.success("Paper processed successfully.")
+        # Set session start time when paper is uploaded
+        if st.session_state.session_start_time is None:
+            st.session_state.session_start_time = datetime.now()
+        
+        st.success("Paper processed successfully.")
+        st.rerun()
 
 # --------------------------------
 # Step 2: Interview Section
