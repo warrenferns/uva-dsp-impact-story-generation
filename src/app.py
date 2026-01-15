@@ -3,6 +3,16 @@ from langchain_openai import ChatOpenAI
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from datetime import datetime, timedelta
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+import io
+import re
 
 
 # --------------------------------
@@ -125,6 +135,9 @@ if "interview_transcript" not in st.session_state:
 if "current_prompt" not in st.session_state:
     st.session_state.current_prompt = None
 
+if "generated_story" not in st.session_state:
+    st.session_state.generated_story = None
+
 # --------------------------------
 # Helper functions
 # --------------------------------
@@ -233,6 +246,143 @@ def evaluate_and_store(section, paper_text):
 
     if result.upper() != "INSUFFICIENT":
         section_data["content"] = result
+
+
+def extract_title(story_text):
+    """Extract and sanitize the title from the story text for use in filenames."""
+    paragraphs = story_text.split('\n\n')
+    if paragraphs:
+        title = paragraphs[0].strip()
+        # Remove markdown formatting
+        title = re.sub(r'\*\*(.+?)\*\*', r'\1', title)
+        title = re.sub(r'\*([^*]+?)\*', r'\1', title)
+        # Sanitize for filename (remove invalid characters)
+        title = re.sub(r'[<>:"/\\|?*]', '', title)
+        # Limit length and clean up
+        title = title[:100].strip()
+        return title if title else "impact_story"
+    return "impact_story"
+
+
+def generate_pdf(story_text):
+    """Generate a PDF document from the impact story text."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter,
+                            rightMargin=72, leftMargin=72,
+                            topMargin=72, bottomMargin=18)
+    
+    styles = getSampleStyleSheet()
+    story = []
+    
+    # Title style
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor='#1f77b4',
+        spaceAfter=30,
+        alignment=TA_CENTER
+    )
+    
+    # Normal style with justified text
+    normal_style = ParagraphStyle(
+        'CustomNormal',
+        parent=styles['Normal'],
+        fontSize=11,
+        leading=14,
+        alignment=TA_JUSTIFY,
+        spaceAfter=12
+    )
+    
+    # Split story into paragraphs
+    paragraphs = story_text.split('\n\n')
+    
+    for i, para in enumerate(paragraphs):
+        para = para.strip()
+        if not para:
+            continue
+        
+        # Check if it's a title (usually first paragraph or all caps/short)
+        is_title = (len(para) < 100 and para.isupper()) or (i == 0)
+        
+        if is_title:
+            # Remove markdown formatting from title
+            title_clean = re.sub(r'\*\*(.+?)\*\*', r'\1', para)
+            title_clean = re.sub(r'\*([^*]+?)\*', r'\1', title_clean)
+            story.append(Paragraph(title_clean, title_style))
+        else:
+            # Replace markdown formatting for PDF (ReportLab uses HTML-like tags)
+            # Handle bold: **text** -> <b>text</b>
+            para = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', para)
+            # Handle italic: *text* -> <i>text</i> (but not if it's part of **)
+            para = re.sub(r'(?<!\*)\*([^*]+?)\*(?!\*)', r'<i>\1</i>', para)
+            story.append(Paragraph(para, normal_style))
+        
+        story.append(Spacer(1, 0.2*inch))
+    
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def generate_word(story_text):
+    """Generate a Word document from the impact story text."""
+    doc = Document()
+    
+    # Set default font
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Calibri'
+    font.size = Pt(11)
+    
+    # Split story into paragraphs
+    paragraphs = story_text.split('\n\n')
+    
+    for i, para in enumerate(paragraphs):
+        para = para.strip()
+        if not para:
+            continue
+        
+        # Check if it's a title
+        is_title = (len(para) < 100 and para.isupper()) or (i == 0)
+        
+        if is_title:
+            # Remove markdown formatting from title
+            title_clean = re.sub(r'\*\*(.+?)\*\*', r'\1', para)
+            title_clean = re.sub(r'\*([^*]+?)\*', r'\1', title_clean)
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(title_clean)
+            run.font.size = Pt(18)
+            run.font.bold = True
+        else:
+            # Handle markdown formatting for Word
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            
+            # Process text with markdown formatting
+            text_parts = re.split(r'(\*\*.*?\*\*|\*.*?\*)', para)
+            for part in text_parts:
+                if not part:
+                    continue
+                if part.startswith('**') and part.endswith('**'):
+                    # Bold text
+                    run = p.add_run(part[2:-2])
+                    run.bold = True
+                elif part.startswith('*') and part.endswith('*') and not part.startswith('**'):
+                    # Italic text
+                    run = p.add_run(part[1:-1])
+                    run.italic = True
+                else:
+                    # Regular text
+                    p.add_run(part)
+        
+        doc.add_paragraph()  # Add spacing between paragraphs
+    
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
     
 
 # def evaluate_and_store(section, answer, paper_text):
@@ -377,5 +527,31 @@ if st.session_state.paper_text:
                     prompt += f"\n{k.replace('_', ' ').title()}:\n{v['content']}\n"
 
                 impact_story = llm.invoke(prompt).content
+                st.session_state.generated_story = impact_story
 
-            st.markdown(impact_story)
+        # Display the story if it exists in session state
+        if st.session_state.generated_story:
+            st.markdown(st.session_state.generated_story)
+        
+        # Display export options if story is generated
+        if st.session_state.generated_story:
+            st.subheader("📥 Export Options")
+            
+            # Extract title for filename
+            story_title = extract_title(st.session_state.generated_story)
+            
+            pdf_bytes = generate_pdf(st.session_state.generated_story)
+            st.download_button(
+                label="📄 Download as PDF",
+                data=pdf_bytes,
+                file_name=f"{story_title}.pdf",
+                mime="application/pdf"
+            )
+            
+            word_bytes = generate_word(st.session_state.generated_story)
+            st.download_button(
+                label="📝 Download as Word",
+                data=word_bytes,
+                file_name=f"{story_title}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
