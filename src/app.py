@@ -59,7 +59,7 @@ api_key = st.session_state.api_key
 # --------------------------------
 # Sidebar: Session info
 # --------------------------------
-with st.sidebar.expander("📋 Session", expanded=True):
+with st.sidebar.expander("📋 Interview Session", expanded=True):
     if st.session_state.get("paper_text"):
         st.markdown("✓ Paper uploaded")
         
