@@ -13,6 +13,7 @@ from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 import re
+from urllib.parse import quote
 
 
 # --------------------------------
@@ -28,6 +29,16 @@ st.title("🌍 Impact Story Interview Assistant")
 st.caption(
     "A guided human–AI process for translating research into societal impact stories."
 )
+
+# --------------------------------
+# Email Export Configuration
+# --------------------------------
+EMAIL_SUBJECT = "Research Impact Story"
+EMAIL_INTRO_TEXT = """Dear Colleague,
+
+I am pleased to share the following impact story that highlights the societal relevance and real-world applications of our research.
+
+Best regards"""
 
 
 # --------------------------------
@@ -383,7 +394,23 @@ def generate_word(story_text):
     doc.save(buffer)
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def generate_email_content(story_text, subject, intro_text):
+    """Generate email content with subject, intro text, and story."""
+    # Remove markdown formatting from story for email (keep it simple)
+    story_clean = re.sub(r'\*\*(.+?)\*\*', r'\1', story_text)
+    story_clean = re.sub(r'\*([^*]+?)\*', r'\1', story_clean)
     
+    email_body = f"{intro_text}\n\n{story_clean}"
+    return subject, email_body
+
+
+def create_mailto_link(subject, body):
+    """Create a mailto link with subject and body."""
+    subject_encoded = quote(subject)
+    body_encoded = quote(body)
+    return f"mailto:?subject={subject_encoded}&body={body_encoded}"
 
 # def evaluate_and_store(section, answer, paper_text):
 #     prompt = (
@@ -554,4 +581,16 @@ if st.session_state.paper_text:
                 data=word_bytes,
                 file_name=f"{story_title}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+            
+            # Email export
+            email_subject, email_body = generate_email_content(
+                st.session_state.generated_story,
+                EMAIL_SUBJECT,
+                EMAIL_INTRO_TEXT
+            )
+            mailto_link = create_mailto_link(email_subject, email_body)
+            st.link_button(
+                "📧 Send via Email",
+                mailto_link
             )
