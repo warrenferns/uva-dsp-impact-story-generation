@@ -267,14 +267,23 @@ if st.session_state.paper_text:
                     last_answer
                 )
 
-        st.markdown(f"**🤖 Interviewer:** {st.session_state.current_prompt}")
+        # Display conversation history
+        for question, answer in st.session_state.interview_transcript:
+            with st.chat_message("assistant"):
+                st.write(question)
+            with st.chat_message("user"):
+                st.write(answer)
 
-        user_answer = st.text_area(
-            "👤 Your response",
-            key=f"answer_{missing_section}"
-        )
+        # Display current pending question
+        if st.session_state.current_prompt:
+            with st.chat_message("assistant"):
+                st.write(st.session_state.current_prompt)
 
-        if st.button("Submit response"):
+        # Chat input for user response
+        user_answer = st.chat_input("Type your answer here...")
+
+        if user_answer:
+            # Append to transcript immediately so it appears in chat
             st.session_state.interview_transcript.append(
                 (st.session_state.current_prompt, user_answer)
             )
@@ -285,13 +294,11 @@ if st.session_state.paper_text:
                 section_data["attempts"] += 1
                 
                 evaluate_and_store(missing_section, st.session_state.paper_text)
-                # evaluate_and_store(missing_section, user_answer, st.session_state.paper_text)
 
             st.session_state.current_prompt = None
             st.rerun()
     else:
         st.success("All impact story elements have been collected.")
-
 # --------------------------------
 # Step 3: Show Contribution State
 # --------------------------------
