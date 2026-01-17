@@ -26,7 +26,7 @@ st.set_page_config(
 )
 st.image("resources/uva_logo_2.png", width=200)
 
-# Custom CSS for title and caption with UvA Utopia font (which is the official font of UvA: https://www.uva.nl/over-de-uva/over-de-universiteit/huisstijl/huisstijlelementen/lettertypen/lettertypen.html)
+# Custom CSS for all text to be Utopia font (which is the official font of UvA: https://www.uva.nl/over-de-uva/over-de-universiteit/huisstijl/huisstijlelementen/lettertypen/lettertypen.html)
 st.markdown("""
     <style>
     h1, h2, h3 {
