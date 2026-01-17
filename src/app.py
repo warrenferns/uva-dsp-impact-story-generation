@@ -33,12 +33,14 @@ st.caption(
 # --------------------------------
 # Email Export Configuration
 # --------------------------------
-EMAIL_SUBJECT = "Research Impact Story"
+EMAIL_SUBJECT = "Research Summary for Impact Story"
 EMAIL_INTRO_TEXT = """Dear Colleague,
 
-I am pleased to share the following impact story that highlights the societal relevance and real-world applications of our research.
+I am pleased to share the following the summary of the research for impact story. 
 
-Best regards"""
+Best regards,
+Bart van Zelst
+"""
 
 # --------------------------------
 # Impact Story Section Constants
@@ -570,7 +572,7 @@ if st.session_state.paper_text:
         with st.chat_message("assistant"):
             st.write(st.session_state.current_prompt)
 
-    # Custom CSS to add text to the send button and make it bigger
+    # Custom CSS to design the buttons (note that Send button is different than rest of the action buttons)
     st.markdown("""
         <style>
         /* Hide the default send icon and show "Send" text instead */
