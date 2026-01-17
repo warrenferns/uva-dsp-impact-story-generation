@@ -532,8 +532,11 @@ if st.session_state.paper_text:
         </style>
     """, unsafe_allow_html=True)
     
-    # Chat input for user response (disabled when all answered)
-    user_answer = st.chat_input("Type your answer here...", disabled=all_answered)
+    # Chat input for user response (only show when not in revision mode)
+    if not st.session_state.get("revision_mode", False):
+        user_answer = st.chat_input("Type your answer here...", disabled=all_answered)
+    else:
+        user_answer = None
 
     if user_answer and missing_section:
         # Append to transcript immediately so it appears in chat
