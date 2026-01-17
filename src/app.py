@@ -25,9 +25,9 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🌍 Impact Story Interview Assistant")
+st.title("Research Impact Interview")
 st.caption(
-    "A guided human–AI process for translating research into societal impact stories."
+    "A guided human–AI process for translating research into summary to assist the creation of societal impact stories."
 )
 
 # --------------------------------
@@ -53,6 +53,24 @@ IMPACT_STORY_SECTIONS = {
 }
 
 MAX_ATTEMPTS_PER_SECTION = 2
+
+# Generate prompt using section names from IMPACT_STORY_SECTIONS
+STORY_GENERATION_PROMPT = f"""Write a complete Impact Story for a broad audience using the structure below.
+
+Structure and word limits:
+- {IMPACT_STORY_SECTIONS["title_hook"]} (short, active)
+- {IMPACT_STORY_SECTIONS["societal_problem"]} (~100 words)
+- {IMPACT_STORY_SECTIONS["societal_impact"]} (~150 words)
+- {IMPACT_STORY_SECTIONS["research_and_approach"]} (~150 words)
+- {IMPACT_STORY_SECTIONS["people_and_collaboration"]} (~100 words)
+- {IMPACT_STORY_SECTIONS["outlook"]} (~50 words)
+
+Keep the story concrete and human. Avoid jargon.
+Focus on the connection between science and everyday life.
+
+Use the following elicited content as your primary source:
+
+"""
 
 
 # --------------------------------
@@ -487,10 +505,10 @@ def create_mailto_link(subject, body):
 # --------------------------------
 # Step 1: Upload PDF
 # --------------------------------
-st.header("📄 Upload Research Paper")
+st.header("Upload the research paper")
 
 uploaded_file = st.file_uploader(
-    "Upload a research paper PDF",
+    "After uploading your paper, our AI will analyze it and conduct a brief interview to understand the impact of your research. The entire process takes approximately 5-10 minutes.",
     type=["pdf"]
 )
 
@@ -521,7 +539,7 @@ if uploaded_file and st.session_state.paper_text is None:
 # Step 2: Interview Section
 # --------------------------------
 if st.session_state.paper_text:
-    st.header("🗣️ Guided Impact Interview")
+    #st.header("🗣️ Guided Impact Interview")
 
     missing_section = next_missing_section(st.session_state.impact_state)
     all_answered = all(v["content"] is not None for v in st.session_state.impact_state.values())
@@ -626,19 +644,7 @@ if st.session_state.paper_text:
 
         if st.button("Generate Impact Story"):
             with st.spinner("Writing impact story..."):
-                prompt = (
-                    "Write a complete Impact Story for a broad audience using the structure below.\n\n"
-                    "Structure and word limits:\n"
-                    "- Title (short, active)\n"
-                    "- Introduction (~100 words)\n"
-                    "- Societal Impact (~150 words)\n"
-                    "- Research and Approach (~150 words)\n"
-                    "- People and Collaboration (~100 words)\n"
-                    "- Conclusion / Outlook (~50 words)\n\n"
-                    "Keep the story concrete and human. Avoid jargon.\n"
-                    "Focus on the connection between science and everyday life.\n\n"
-                    "Use the following elicited content as your primary source:\n\n"
-                )
+                prompt = STORY_GENERATION_PROMPT
 
                 for k, v in st.session_state.impact_state.items():
                     section_name = IMPACT_STORY_SECTIONS.get(k, k.replace('_', ' ').title())
@@ -677,7 +683,7 @@ if st.session_state.paper_text:
                 with st.chat_message("user"):
                     st.write(feedback["user_input"])
                 with st.chat_message("assistant"):
-                    st.write("Thank you for your answer. I have all the necessary information I need. Do you want to add anything else or should we end this interview?")
+                    st.write("Thank you for your answer. I have all the necessary information I need and your revision will be incorporated into final summary. Do you want to add anything else or should we end this interview?")
             
             # Chat input for revision feedback
             revision_input = st.chat_input("Type your revision request here...")
@@ -700,19 +706,7 @@ if st.session_state.paper_text:
                         # Regenerate story with revision feedback
                         with st.spinner("Regenerating story with your revisions..."):
                             feedback_text = "\n".join([f["user_input"] for f in st.session_state.revision_feedback])
-                            prompt = (
-                                "Write a complete Impact Story for a broad audience using the structure below.\n\n"
-                                "Structure and word limits:\n"
-                                "- Title (short, active)\n"
-                                "- Introduction (~100 words)\n"
-                                "- Societal Impact (~150 words)\n"
-                                "- Research and Approach (~150 words)\n"
-                                "- People and Collaboration (~100 words)\n"
-                                "- Conclusion / Outlook (~50 words)\n\n"
-                                "Keep the story concrete and human. Avoid jargon.\n"
-                                "Focus on the connection between science and everyday life.\n\n"
-                                "Use the following elicited content as your primary source:\n\n"
-                            )
+                            prompt = STORY_GENERATION_PROMPT
 
                             for k, v in st.session_state.impact_state.items():
                                 section_name = IMPACT_STORY_SECTIONS.get(k, k.replace('_', ' ').title())
