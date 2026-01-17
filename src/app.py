@@ -596,6 +596,25 @@ if st.session_state.paper_text:
             font-weight: 500;
             color: white !important;
         }
+        /* Style all buttons except chat input button with black background */
+        button[kind="primary"]:not(div[data-testid="stChatInput"] button),
+        button[kind="secondary"]:not(div[data-testid="stChatInput"] button),
+        .stDownloadButton > button,
+        a[data-testid="stLinkButton"],
+        .stLinkButton > a {
+            background-color: #000000 !important;
+            color: #ffffff !important;
+            border: 1px solid #000000 !important;
+        }
+        button[kind="primary"]:not(div[data-testid="stChatInput"] button):hover,
+        button[kind="secondary"]:not(div[data-testid="stChatInput"] button):hover,
+        .stDownloadButton > button:hover,
+        a[data-testid="stLinkButton"]:hover,
+        .stLinkButton > a:hover {
+            background-color: #333333 !important;
+            border-color: #333333 !important;
+            color: #ffffff !important;
+        }
         </style>
     """, unsafe_allow_html=True)
     
@@ -746,7 +765,7 @@ if st.session_state.paper_text:
             with col2:
                 pdf_bytes = generate_pdf(st.session_state.generated_story)
                 st.download_button(
-                    label="📄 Download as PDF",
+                    label="Download as PDF",
                     data=pdf_bytes,
                     file_name=f"{story_title}.pdf",
                     mime="application/pdf"
@@ -755,7 +774,7 @@ if st.session_state.paper_text:
             with col3:
                 word_bytes = generate_word(st.session_state.generated_story)
                 st.download_button(
-                    label="📝 Download as Word",
+                    label="Download as Word",
                     data=word_bytes,
                     file_name=f"{story_title}.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -770,6 +789,6 @@ if st.session_state.paper_text:
                 )
                 mailto_link = create_mailto_link(email_subject, email_body)
                 st.link_button(
-                    "📧 Send via Email",
+                    "Send via Email",
                     mailto_link
                 )
