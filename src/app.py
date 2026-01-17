@@ -527,12 +527,14 @@ def create_mailto_link(subject, body):
 # --------------------------------
 # Step 1: Upload PDF
 # --------------------------------
-st.header("Upload the research paper")
+st.divider()
+st.subheader("Upload the research paper")
 
 uploaded_file = st.file_uploader(
     "After uploading your paper, our AI will analyze it and conduct a brief interview to understand the impact of your research. The entire process takes approximately 5-10 minutes.",
     type=["pdf"]
 )
+st.divider()
 
 if uploaded_file and st.session_state.paper_text is None:
     with st.spinner("Reading and processing PDF..."):
