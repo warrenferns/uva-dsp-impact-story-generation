@@ -208,3 +208,11 @@ __marimo__/
 src/.streamlit
 src/impact_story.db
 src/temp.pdf
+
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Local database and temp files
+impact_story.db
+temp.pdf

@@ -217,23 +217,25 @@ def evaluate_and_store(section, state, paper_text):
 
     result = llm.invoke(prompt).content.strip()
     
-    if (
-        section_data["content"] is None
-        and section_data["attempts"] >= MAX_ATTEMPTS_PER_SECTION
-    ):
+     # If sufficient, use it
+    if result.upper() != "INSUFFICIENT":
+        section_data["content"] = result
+        return result
+
+    # If insufficient AND we've hit max attempts, force a best-effort fallback
+    if section_data["attempts"] >= MAX_ATTEMPTS_PER_SECTION:
         fallback_prompt = (
             f"Based on the partial information below, write the best possible "
-            f"version of the impact story section '{section}'. "
-            "Be transparent but constructive.\n\n"
+            f"version of the impact story section '{section.replace('_',' ')}'. "
+            "Be transparent about what is unknown, but still produce a usable paragraph.\n\n"
             f"{combined_answers}"
         )
-    
-        section_data["content"] = llm.invoke(fallback_prompt).content
+        fallback = llm.invoke(fallback_prompt).content.strip()
+        section_data["content"] = fallback
+        return fallback
 
-    if result.upper() != "INSUFFICIENT":
-        return result
-    else:
-        return None
+    # Otherwise, keep asking
+    return None
 
 def extract_title(story_text):
     """Extract and sanitize the title from the story text for use in filenames."""
@@ -541,6 +543,7 @@ def interview_ui():
         ).fetchone()
 
     state = json.loads(row[0])
+    st.session_state.impact_state = state  # sync session with DB state
 
     if row[1]:
         st.session_state.interview_transcript = json.loads(row[1])
@@ -592,7 +595,7 @@ def interview_ui():
             with st.spinner("Preparing next interview turn..."):
                 st.session_state.current_prompt = generate_interview_turn(
                     missing_section,
-                    st.session_state.paper_text,
+                    paper_text,
                     last_answer
                 )
                 
@@ -677,7 +680,8 @@ def interview_ui():
             section_data["answers"].append(user_answer)
             section_data["attempts"] += 1
                 
-            section_data["content"] = evaluate_and_store(missing_section, state, st.session_state.paper_text)
+            section_data["content"] = evaluate_and_store(missing_section, state, paper_text)
+            st.session_state.impact_state = state  # keep session updated
             
             conn = get_conn()
             conn.execute("""
@@ -698,11 +702,11 @@ def interview_ui():
     if all_answered:
         st.success("All impact story elements have been collected.")
 
-        if st.button("Generate Impact Story"):
-            with st.spinner("Writing impact story..."):
+        if st.button("Generate Impact Story Summary"):
+            with st.spinner("Writing impact story summary..."):
                 prompt = STORY_GENERATION_PROMPT
 
-                for k, v in st.session_state.impact_state.items():
+                for k, v in state.items():
                     section_name = IMPACT_STORY_SECTIONS.get(k, k.replace('_', ' ').title())
                     prompt += f"\n{section_name}:\n{v['content']}\n"
 
