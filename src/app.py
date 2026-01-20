@@ -68,9 +68,17 @@ def init_db():
     CREATE TABLE IF NOT EXISTS interview_states (
         interview_code TEXT PRIMARY KEY,
         state_json TEXT,
-        transcript_json TEXT
+        transcript_json TEXT,
+        generated_story TEXT
     )
     """)
+    
+    # Add generated_story column if it doesn't exist (for existing databases)
+    try:
+        cur.execute("ALTER TABLE interview_states ADD COLUMN generated_story TEXT")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
 
     conn.commit()
 
@@ -135,15 +143,13 @@ MAX_ATTEMPTS_PER_SECTION = 2
 EMAIL_SUBJECT = "Research Summary for Impact Story"
 EMAIL_INTRO_TEXT = """Dear Colleague,
 
-I am pleased to share the following the summary of the research for impact story. 
+I am pleased to share the following the summary of my research for impact story. 
 
 Best regards,
-Bart van Zelst
-Faculty of Economics and Business
-Marketing & Communication
+
 """
 
-STORY_GENERATION_PROMPT = f"""Write a complete Impact Story for a broad audience using the structure below.
+STORY_GENERATION_PROMPT = f"""Provide a summarized overview of the sections specified below and utilize the following structure:
 
 Structure and word limits:
 - {IMPACT_STORY_SECTIONS["title_hook"]} (short, active)
@@ -153,8 +159,7 @@ Structure and word limits:
 - {IMPACT_STORY_SECTIONS["people_and_collaboration"]} (~100 words)
 - {IMPACT_STORY_SECTIONS["outlook"]} (~50 words)
 
-Keep the story concrete and human. Avoid jargon.
-Focus on the connection between science and everyday life.
+Keep the summary concrete and human. Avoid jargon.
 
 Use the following elicited content as your primary source:
 
@@ -188,11 +193,11 @@ def get_last_researcher_answer(transcript):
 
 def generate_interview_turn(section, paper_text, last_answer=None):
     prompt = (
-        "You are facilitating an impact story interview for a broad, non-academic audience.\n\n"
+        "You are generating a summary of a research that's going to be used to generate an impact story. \n\n"
         "First, briefly acknowledge and paraphrase the researcher's previous answer "
         "in plain language (if one exists).\n"
         "Then explain why this aspect matters from a societal or human perspective.\n"
-        "Finally, ask ONE open-ended question to help develop the following impact story section:\n\n"
+        "Finally, ask ONE open-ended question to help develop the following summary section:\n\n"
         f"{section.replace('_', ' ').title()}\n\n"
         "Avoid jargon. Keep the tone conversational and supportive.\n\n"
         "Research paper context:\n"
@@ -206,12 +211,12 @@ def evaluate_and_store(section, state, paper_text):
     combined_answers = "\n".join(section_data["answers"])
 
     prompt = (
-        f"You are helping synthesize an impact story section: "
+        f"You are helping synthesize a summary section: "
         f"{section.replace('_', ' ').title()}.\n\n"
         "Below are multiple responses provided by the researcher over the interview.\n\n"
         f"{combined_answers}\n\n"
         "If this information is sufficient, synthesize a clear, human-friendly "
-        "paragraph (3–4 sentences) suitable for a broad audience.\n"
+        "paragraph (3–4 sentences).\n"
         "If information is still incomplete, return ONLY the word 'INSUFFICIENT'."
     )
 
@@ -226,7 +231,7 @@ def evaluate_and_store(section, state, paper_text):
     if section_data["attempts"] >= MAX_ATTEMPTS_PER_SECTION:
         fallback_prompt = (
             f"Based on the partial information below, write the best possible "
-            f"version of the impact story section '{section.replace('_',' ')}'. "
+            f"version of the summary section '{section.replace('_',' ')}'. "
             "Be transparent about what is unknown, but still produce a usable paragraph.\n\n"
             f"{combined_answers}"
         )
@@ -238,7 +243,7 @@ def evaluate_and_store(section, state, paper_text):
     return None
 
 def extract_title(story_text):
-    """Extract and sanitize the title from the story text for use in filenames."""
+    """Extract and sanitize the title from the summary text for use in filenames."""
     paragraphs = story_text.split('\n\n')
     if paragraphs:
         title = paragraphs[0].strip()
@@ -254,7 +259,7 @@ def extract_title(story_text):
 
 
 def generate_pdf(story_text):
-    """Generate a PDF document from the impact story text."""
+    """Generate a PDF document from the summary text."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter,
                             rightMargin=72, leftMargin=72,
@@ -315,7 +320,7 @@ def generate_pdf(story_text):
 
 
 def generate_word(story_text):
-    """Generate a Word document from the impact story text."""
+    """Generate a Word document from the summary text."""
     doc = Document()
     
     # Set default font
@@ -375,7 +380,7 @@ def generate_word(story_text):
 
 
 def generate_email_content(story_text, subject, intro_text):
-    """Generate email content with subject, intro text, and story."""
+    """Generate email content with subject, intro text, and summary."""
     # Remove markdown formatting from story for email (keep it simple)
     story_clean = re.sub(r'\*\*(.+?)\*\*', r'\1', story_text)
     story_clean = re.sub(r'\*([^*]+?)\*', r'\1', story_clean)
@@ -463,11 +468,12 @@ def admin_panel():
                 )
         
                 conn.execute(
-                    "INSERT INTO interview_states VALUES (?, ?, ?)",
+                    "INSERT INTO interview_states VALUES (?, ?, ?, ?)",
                     (
                         interview_code,
                         json.dumps(st.session_state.impact_state),
-                        json.dumps([])
+                        json.dumps([]),
+                        None
                     )
                 )
         
@@ -483,7 +489,8 @@ def admin_panel():
             SELECT 
                 i.interview_code,
                 p.title,
-                s.state_json
+                s.state_json,
+                s.generated_story
             FROM interviews i
             JOIN papers p ON i.paper_id = p.paper_id
             JOIN interview_states s ON i.interview_code = s.interview_code
@@ -495,7 +502,7 @@ def admin_panel():
     
         table_data = []
         
-        for interview_code, title, state_json in rows:
+        for interview_code, title, state_json, generated_story in rows:
             status = compute_interview_status(state_json)
         
             table_data.append({
@@ -505,6 +512,49 @@ def admin_panel():
             })
         
         st.table(table_data)
+        
+        # Add export functionality for completed interviews
+        st.subheader("Export Completed Summaries")
+        
+        for interview_code, title, state_json, generated_story in rows:
+            status = compute_interview_status(state_json)
+            
+            if status == "Completed":
+                with st.expander(f"📄 {title[:50]}... - {interview_code}"):
+                    st.write(f"**Status:** {status}")
+                    
+                    # Check if researcher has generated a story
+                    if generated_story:
+                        # Display the story
+                        st.markdown("**Finalized Summary:**")
+                        st.markdown(generated_story)
+                        
+                        # Export buttons
+                        story_title = extract_title(generated_story)
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            pdf_bytes = generate_pdf(generated_story)
+                            st.download_button(
+                                label="📥 Export as PDF",
+                                data=pdf_bytes,
+                                file_name=f"{story_title}.pdf",
+                                mime="application/pdf",
+                                key=f"pdf_{interview_code}"
+                            )
+                        
+                        with col2:
+                            word_bytes = generate_word(generated_story)
+                            st.download_button(
+                                label="📥 Export as Word",
+                                data=word_bytes,
+                                file_name=f"{story_title}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                key=f"word_{interview_code}"
+                            )
+                    else:
+                        st.info("The researcher has completed the interview but has not yet generated the final summary.")
 
 def researcher_login():
     st.header("Researcher Login")
@@ -538,7 +588,7 @@ def interview_ui():
     """, (code,)).fetchone()[0]
 
     row = conn.execute(
-            "SELECT state_json, transcript_json FROM interview_states WHERE interview_code = ?",
+            "SELECT state_json, transcript_json, generated_story FROM interview_states WHERE interview_code = ?",
             (code,)
         ).fetchone()
 
@@ -549,6 +599,10 @@ def interview_ui():
         st.session_state.interview_transcript = json.loads(row[1])
     else:
         st.session_state.interview_transcript = []
+    
+    # Load generated story if it exists
+    if row[2]:
+        st.session_state.generated_story = row[2]
     
     conn.close()
 
@@ -700,7 +754,7 @@ def interview_ui():
         st.rerun()
     
     if all_answered:
-        st.success("All impact story elements have been collected.")
+        st.success("All summary elements have been collected.")
 
         if st.button("Generate Impact Story Summary"):
             with st.spinner("Writing impact story summary..."):
@@ -717,6 +771,16 @@ def interview_ui():
                     "story": impact_story,
                     "revisions": []
                 })
+                
+                # Save to database
+                conn = get_conn()
+                conn.execute("""
+                    UPDATE interview_states
+                    SET generated_story = ?
+                    WHERE interview_code = ?
+                """, (impact_story, code))
+                conn.commit()
+                conn.close()
 
         # Display all stories and revisions in chronological order
         for item in st.session_state.story_revisions:
@@ -764,7 +828,7 @@ def interview_ui():
                 if st.session_state.revision_mode:
                     if st.button("End interview and generate summary"):
                         # Regenerate story with revision feedback
-                        with st.spinner("Regenerating story with your revisions..."):
+                        with st.spinner("Regenerating summary with your revisions..."):
                             feedback_text = "\n".join([f["user_input"] for f in st.session_state.revision_feedback])
                             prompt = STORY_GENERATION_PROMPT
 
@@ -773,7 +837,7 @@ def interview_ui():
                                 prompt += f"\n{section_name}:\n{v['content']}\n"
                             
                             prompt += f"\n\nRevision requests from the user:\n{feedback_text}\n\n"
-                            prompt += "Please incorporate these revision requests into the story."
+                            prompt += "Please incorporate these revision requests into the summary."
                             
                             impact_story = llm.invoke(prompt).content
                             st.session_state.generated_story = impact_story
@@ -791,6 +855,16 @@ def interview_ui():
                                 "story": impact_story,
                                 "revisions": []
                             })
+                            
+                            # Save updated story to database
+                            conn = get_conn()
+                            conn.execute("""
+                                UPDATE interview_states
+                                SET generated_story = ?
+                                WHERE interview_code = ?
+                            """, (impact_story, code))
+                            conn.commit()
+                            conn.close()
                             
                             st.session_state.revision_mode = False
                             st.session_state.revision_welcome_shown = False
@@ -846,7 +920,7 @@ st.caption(
 )
         
 # ---------------- MAIN ----------------
-st.set_page_config(page_title="Impact Story Interview", layout="centered")
+st.set_page_config(page_title="Summary Interview for Impact Stories", layout="centered")
 init_db()
 
 st.sidebar.title("Role")
