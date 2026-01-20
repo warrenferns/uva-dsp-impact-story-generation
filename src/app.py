@@ -69,13 +69,21 @@ def init_db():
         interview_code TEXT PRIMARY KEY,
         state_json TEXT,
         transcript_json TEXT,
-        generated_story TEXT
+        generated_story TEXT,
+        revision_count INTEGER DEFAULT 0
     )
     """)
     
     # Add generated_story column if it doesn't exist (for existing databases)
     try:
         cur.execute("ALTER TABLE interview_states ADD COLUMN generated_story TEXT")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
+    
+    # Add revision_count column if it doesn't exist (for existing databases)
+    try:
+        cur.execute("ALTER TABLE interview_states ADD COLUMN revision_count INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
         # Column already exists
         pass
@@ -149,7 +157,7 @@ Best regards,
 
 """
 
-STORY_GENERATION_PROMPT = f"""Write a summarized overview of the sections specified below using the following structure. Output ONLY the summary content, with no preamble or conversational text.
+STORY_GENERATION_PROMPT = f"""Write a summarized overview of the sections specified below using the following structure. Output only the summary content, with no preamble or conversational text.
 
 Structure and word limits:
 - {IMPACT_STORY_SECTIONS["title_hook"]} (short, active)
@@ -467,13 +475,24 @@ def admin_panel():
                     (interview_code, paper_id)
                 )
         
+                # Create a fresh impact state for the new interview
+                fresh_impact_state = {
+                    "title_hook": {"content": None, "answers": [], "attempts": 0},
+                    "societal_problem": {"content": None, "answers": [], "attempts": 0},
+                    "societal_impact": {"content": None, "answers": [], "attempts": 0},
+                    "research_and_approach": {"content": None, "answers": [], "attempts": 0},
+                    "people_and_collaboration": {"content": None, "answers": [], "attempts": 0},
+                    "outlook": {"content": None, "answers": [], "attempts": 0}
+                }
+                
                 conn.execute(
-                    "INSERT INTO interview_states VALUES (?, ?, ?, ?)",
+                    "INSERT INTO interview_states VALUES (?, ?, ?, ?, ?)",
                     (
                         interview_code,
-                        json.dumps(st.session_state.impact_state),
+                        json.dumps(fresh_impact_state),
                         json.dumps([]),
-                        None
+                        None,
+                        0
                     )
                 )
         
@@ -490,7 +509,8 @@ def admin_panel():
                 i.interview_code,
                 p.title,
                 s.state_json,
-                s.generated_story
+                s.generated_story,
+                COALESCE(s.revision_count, 0) as revision_count
             FROM interviews i
             JOIN papers p ON i.paper_id = p.paper_id
             JOIN interview_states s ON i.interview_code = s.interview_code
@@ -502,13 +522,14 @@ def admin_panel():
     
         table_data = []
         
-        for interview_code, title, state_json, generated_story in rows:
+        for interview_code, title, state_json, generated_story, revision_count in rows:
             status = compute_interview_status(state_json)
         
             table_data.append({
                 "Paper": title,
                 "Interview Code": interview_code,
-                "Status": status
+                "Status": status,
+                "Revisions": revision_count
             })
         
         st.table(table_data)
@@ -516,7 +537,7 @@ def admin_panel():
         # Add export functionality for completed interviews
         st.subheader("Export Completed Summaries")
         
-        for interview_code, title, state_json, generated_story in rows:
+        for interview_code, title, state_json, generated_story, revision_count in rows:
             status = compute_interview_status(state_json)
             
             if status == "Completed":
@@ -875,6 +896,17 @@ def interview_ui():
                         st.session_state.revision_mode = True
                         st.session_state.revision_welcome_shown = False
                         st.session_state.revision_feedback = []
+                        
+                        # Increment revision count
+                        conn = get_conn()
+                        conn.execute("""
+                            UPDATE interview_states
+                            SET revision_count = COALESCE(revision_count, 0) + 1
+                            WHERE interview_code = ?
+                        """, (code,))
+                        conn.commit()
+                        conn.close()
+                        
                         st.rerun()
             
             with col2:
