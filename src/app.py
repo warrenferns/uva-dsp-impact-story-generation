@@ -149,7 +149,7 @@ Best regards,
 
 """
 
-STORY_GENERATION_PROMPT = f"""Provide a summarized overview of the sections specified below and utilize the following structure:
+STORY_GENERATION_PROMPT = f"""Write a summarized overview of the sections specified below using the following structure. Output ONLY the summary content, with no preamble or conversational text.
 
 Structure and word limits:
 - {IMPACT_STORY_SECTIONS["title_hook"]} (short, active)
