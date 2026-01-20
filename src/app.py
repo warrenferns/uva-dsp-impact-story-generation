@@ -1,3 +1,4 @@
+# Import libraries
 import streamlit as st
 import sqlite3
 import uuid
@@ -24,6 +25,7 @@ import io
 import re
 from urllib.parse import quote
 
+# Apply custom fonts for UI styling (UvA official font)
 st.markdown("""
     <style>
     h1, h2, h3 {
@@ -46,9 +48,11 @@ def get_conn():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def init_db():
+    # Initialize database tables
     conn = get_conn()
     cur = conn.cursor()
 
+    # Store uploaded research papers
     cur.execute("""
     CREATE TABLE IF NOT EXISTS papers (
         paper_id TEXT PRIMARY KEY,
@@ -57,6 +61,7 @@ def init_db():
     )
     """)
 
+    # Link interview codes to papers
     cur.execute("""
     CREATE TABLE IF NOT EXISTS interviews (
         interview_code TEXT PRIMARY KEY,
@@ -64,6 +69,7 @@ def init_db():
     )
     """)
 
+    # Store interview progress, transcripts, and generated stories
     cur.execute("""
     CREATE TABLE IF NOT EXISTS interview_states (
         interview_code TEXT PRIMARY KEY,
@@ -90,16 +96,14 @@ def init_db():
 
     conn.commit()
 
+# Initialize LLM using OpenAI API
 llm = ChatOpenAI(
     model="gpt-4.1-mini",
     api_key=st.secrets["OPENAI_API_KEY"],
     base_url="https://ai-research-proxy.azurewebsites.net"
 )
 
-# --------------------------------
 # Session state initialization
-# --------------------------------
-
 IMPACT_STORY_SECTIONS = {
     "title_hook": "Title",
     "societal_problem": "Introduction",
@@ -109,6 +113,7 @@ IMPACT_STORY_SECTIONS = {
     "outlook": "Conclusion/Outlook"
 }
 
+# Initialize session state variables
 if "paper_text" not in st.session_state:
     st.session_state.paper_text = None
 
@@ -132,7 +137,7 @@ if "generated_story" not in st.session_state:
     st.session_state.generated_story = None
 
 if "story_revisions" not in st.session_state:
-    st.session_state.story_revisions = []  # List of {"story": "...", "revisions": [{"user": "...", "assistant": "..."}]}
+    st.session_state.story_revisions = []
 
 if "revision_mode" not in st.session_state:
     st.session_state.revision_mode = False
@@ -145,7 +150,8 @@ if "revision_welcome_shown" not in st.session_state:
 
 if "admin_authenticated" not in st.session_state:
     st.session_state.admin_authenticated = False
-    
+
+# Configuration constants
 MAX_ATTEMPTS_PER_SECTION = 2
 
 EMAIL_SUBJECT = "Research Summary for Impact Story"
@@ -174,6 +180,7 @@ Use the following elicited content as your primary source:
 """
 
 def summarize_paper_sections(full_text):
+    # Summarize research paper into structured sections using LLM
     prompt = (
         "You are an academic assistant.\n\n"
         "Summarize the following research paper into the following sections:\n"
@@ -188,18 +195,21 @@ def summarize_paper_sections(full_text):
     return llm.invoke(prompt).content
 
 def next_missing_section(state):
+    # Find the next section that needs to be completed
     for k, v in state.items():
         if v["content"] is None and v["attempts"] < MAX_ATTEMPTS_PER_SECTION:
             return k
     return None
 
 def get_last_researcher_answer(transcript):
+    # Extract the most recent researcher response from transcript
     for msg in reversed(transcript):
         if msg["role"] == "researcher":
             return msg["content"]
     return None
 
 def generate_interview_turn(section, paper_text, last_answer=None):
+    # Generate the next interview question based on section and previous answer
     prompt = (
         "You are generating a summary of a research that's going to be used to generate an impact story. \n\n"
         "First, briefly acknowledge and paraphrase the researcher's previous answer "
@@ -215,6 +225,7 @@ def generate_interview_turn(section, paper_text, last_answer=None):
     return llm.invoke(prompt).content
 
 def evaluate_and_store(section, state, paper_text):
+    # Evaluate researcher's answers and create section content
     section_data = state[section]
     combined_answers = "\n".join(section_data["answers"])
 
@@ -230,7 +241,7 @@ def evaluate_and_store(section, state, paper_text):
 
     result = llm.invoke(prompt).content.strip()
     
-     # If sufficient, use it
+    # If sufficient, use it
     if result.upper() != "INSUFFICIENT":
         section_data["content"] = result
         return result
@@ -265,9 +276,8 @@ def extract_title(story_text):
         return title if title else "impact_story"
     return "impact_story"
 
-
 def generate_pdf(story_text):
-    """Generate a PDF document from the summary text."""
+    ''' Generate a PDF document from the summary text '''
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter,
                             rightMargin=72, leftMargin=72,
@@ -396,14 +406,14 @@ def generate_email_content(story_text, subject, intro_text):
     email_body = f"{intro_text}\n\n{story_clean}"
     return subject, email_body
 
-
 def create_mailto_link(subject, body):
-    """Create a mailto link with subject and body."""
+    ''' Create a mailto link with subject and body '''
     subject_encoded = quote(subject)
     body_encoded = quote(body)
     return f"mailto:?subject={subject_encoded}&body={body_encoded}"
 
 def compute_interview_status(state_json):
+    ''' Calculate interview completion status based on section content'''
     state = json.loads(state_json)
 
     completed = sum(
@@ -417,10 +427,12 @@ def compute_interview_status(state_json):
         return f"In progress ({completed}/{total})"
     else:
         return "Completed"
-        
-def admin_panel():
-    st.header("Admin Panel")
 
+def admin_panel():
+    '''Display admin interface for managing papers and interviews '''
+    st.subheader("Admin Panel")
+
+    # Authentication check
     if not st.session_state.admin_authenticated:
         pwd = st.text_input(
             "Enter admin password",
@@ -435,7 +447,8 @@ def admin_panel():
             else:
                 st.error("Invalid password")
 
-        return  # stop here if not authenticated
+        return
+    
     if st.session_state.admin_authenticated:
 
         col1, col2 = st.columns([1, 1])
@@ -455,7 +468,7 @@ def admin_panel():
         
         # Show warning alert if user clicked Clear Database
         if st.session_state.confirm_clear_db:
-            st.warning("⚠️ **Are you sure?** This action cannot be undone and all the data stored will be permanently deleted.")
+            st.warning("**Are you sure?** This action cannot be undone and all the data stored will be permanently deleted.")
             
             col1, col2 = st.columns([1, 1])
             with col1:
@@ -475,6 +488,7 @@ def admin_panel():
                     st.session_state.confirm_clear_db = False
                     st.rerun()
         
+        # Paper upload and processing
         uploaded_file = st.file_uploader("Upload research paper (PDF)", type=["pdf"])
     
         if uploaded_file and st.button("Process paper"):
@@ -482,9 +496,11 @@ def admin_panel():
                 paper_id = str(uuid.uuid4())
                 interview_code = str(uuid.uuid4())[:8]
                 
+                # Save uploaded file temporarily
                 with open("temp.pdf", "wb") as f:
                     f.write(uploaded_file.getbuffer())
         
+                # Load and split PDF into chunks
                 loader = PyPDFLoader("temp.pdf")
                 documents = loader.load()
         
@@ -494,15 +510,18 @@ def admin_panel():
                 )
                 docs = splitter.split_documents(documents)
         
+                # Extract and summarize paper text
                 paper_text = "\n\n".join(d.page_content for d in docs)
                 text = summarize_paper_sections(paper_text)
     
+                # Store paper in database
                 conn = get_conn()
                 conn.execute(
                     "INSERT INTO papers VALUES (?, ?, ?)",
                     (paper_id, uploaded_file.name, text)
                 )
         
+                # Create interview with unique code
                 conn.execute(
                     "INSERT INTO interviews VALUES (?, ?)",
                     (interview_code, paper_id)
@@ -518,6 +537,7 @@ def admin_panel():
                     "outlook": {"content": None, "answers": [], "attempts": 0}
                 }
                 
+                # Create interview state record
                 conn.execute(
                     "INSERT INTO interview_states VALUES (?, ?, ?, ?, ?)",
                     (
@@ -611,6 +631,7 @@ def admin_panel():
                         st.info("The researcher has completed the interview but has not yet generated the final summary.")
 
 def researcher_login():
+    # Display researcher login interface
     st.header("Researcher Login")
     code = st.text_input("Enter access code")
 
@@ -630,7 +651,7 @@ def researcher_login():
 
 # ---------------- INTERVIEW ----------------
 def interview_ui():
-
+    # Main interview interface for researchers
     code = st.session_state.interview_code
 
     conn = get_conn()
@@ -653,6 +674,7 @@ def interview_ui():
     
     paper_text = paper_result[0]
 
+    # Load interview state and transcript
     row = conn.execute(
             "SELECT state_json, transcript_json, generated_story FROM interview_states WHERE interview_code = ?",
             (code,)
@@ -680,6 +702,7 @@ def interview_ui():
     
     conn.close()
 
+    # Display progress tracker in sidebar
     with st.sidebar.expander("Question Progress", expanded=True):
         impact_state = state
         section_keys = list(IMPACT_STORY_SECTIONS.keys())
@@ -713,7 +736,8 @@ def interview_ui():
     missing_section = next_missing_section(state)
 
     all_answered = all(v["content"] is not None for v in state.values())
-                
+    
+    # Generate next question if there are missing sections
     if missing_section:
         if st.session_state.current_prompt is None:
             last_answer = get_last_researcher_answer(
@@ -726,17 +750,20 @@ def interview_ui():
                     paper_text,
                     last_answer
                 )
-                
+    
+    # Display interview transcript
     for msg in st.session_state.interview_transcript:
         role = "assistant" if msg["role"] == "assistant" else "user"
     
         with st.chat_message(role):
             st.write(msg["content"])
 
+    # Display current question
     if missing_section and st.session_state.current_prompt:
         with st.chat_message("assistant"):
             st.write(st.session_state.current_prompt)
 
+    # Custom styling for chat input and buttons (Based on Liwias Figma demo)
     st.markdown("""
         <style>
         /* Hide the default send icon and show "Send" text instead */
@@ -784,12 +811,15 @@ def interview_ui():
         </style>
     """, unsafe_allow_html=True)
 
+    # Chat input for researcher answers
     if not st.session_state.get("revision_mode", False):
         user_answer = st.chat_input("Type your answer here...", disabled=all_answered)
     else:
         user_answer = None
 
+    # Process user answer
     if user_answer and missing_section:
+        # Add question and answer to transcript
         st.session_state.interview_transcript.append({
                 "role": "assistant",
                 "content": st.session_state.current_prompt,
@@ -802,15 +832,16 @@ def interview_ui():
                 "timestamp": datetime.utcnow().isoformat()
             })
 
-
+        # Evaluate answer and update section content
         with st.spinner("Integrating response..."):
             section_data = state[missing_section]
             section_data["answers"].append(user_answer)
             section_data["attempts"] += 1
                 
             section_data["content"] = evaluate_and_store(missing_section, state, paper_text)
-            st.session_state.impact_state = state  # keep session updated
+            st.session_state.impact_state = state
             
+            # Save updated state to database
             conn = get_conn()
             conn.execute("""
                     UPDATE interview_states
@@ -827,10 +858,12 @@ def interview_ui():
         st.session_state.current_prompt = None
         st.rerun()
     
+    # Story generation section
     if all_answered:
         st.success("All summary elements have been collected.")
 
-        if st.button("Generate Impact Story Summary"):
+        if st.button("Generate Summary"):
+            # Generate final summaryfrom collected sections
             with st.spinner("Writing impact story summary..."):
                 prompt = STORY_GENERATION_PROMPT
 
@@ -940,17 +973,19 @@ def interview_ui():
                             conn.commit()
                             conn.close()
                             
+                            # Exit revision mode
                             st.session_state.revision_mode = False
                             st.session_state.revision_welcome_shown = False
                             st.session_state.revision_feedback = []
                             st.rerun()
                 else:
                     if st.button("Revise Story"):
+                        # Enter revision mode
                         st.session_state.revision_mode = True
                         st.session_state.revision_welcome_shown = False
                         st.session_state.revision_feedback = []
                         
-                        # Increment revision count
+                        # Increment revision count in database
                         conn = get_conn()
                         conn.execute("""
                             UPDATE interview_states
@@ -993,6 +1028,7 @@ def interview_ui():
                     mailto_link
                 )
 
+# Configure Streamlit page
 st.set_page_config(
     page_title="IxA",
     page_icon="resources/uva_icon.png",
